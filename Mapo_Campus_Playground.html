@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>마포고등학교 3D 캠퍼스 플레이그라운드</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js & OrbitControls Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #090d16;
+            color: #f8fafc;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        .joystick-zone {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            touch-action: none;
+            display: none;
+        }
+        .joystick-knob {
+            position: absolute;
+            top: 35px;
+            left: 35px;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-white overflow-hidden">
+
+    <!-- 3D Render Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- UI Overlay Header -->
+    <div class="absolute top-4 left-4 z-10 flex items-center space-x-3 bg-slate-900/90 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-slate-700/60 shadow-2xl">
+        <div class="w-3.5 h-3.5 rounded-full bg-emerald-400 animate-pulse"></div>
+        <div>
+            <h1 class="text-sm md:text-base font-bold text-white tracking-wide">마포고 · 마포중 · 유석초 Campus</h1>
+            <p class="text-xs text-slate-400">3D Interactive Virtual Playground</p>
+        </div>
+    </div>
+
+    <!-- Mini-Map Window -->
+    <div class="absolute top-4 right-4 z-10 bg-slate-900/90 backdrop-blur-md p-2 rounded-2xl border border-slate-700/60 shadow-2xl flex flex-col items-center">
+        <div class="text-[10px] text-slate-400 mb-1 font-semibold tracking-wider uppercase">Minimap</div>
+        <div class="relative w-32 h-32 md:w-40 md:h-40 rounded-xl overflow-hidden border border-slate-700 bg-slate-950">
+            <canvas id="minimap-canvas" width="160" height="160" class="w-full h-full"></canvas>
+        </div>
+    </div>
+
+    <!-- Controls Guide Window -->
+    <div class="hidden sm:flex absolute bottom-6 left-6 z-10 bg-slate-900/90 backdrop-blur-md p-3.5 rounded-2xl border border-slate-700/60 shadow-2xl flex-col text-xs space-y-1.5 text-slate-300">
+        <div class="font-bold text-white mb-1 flex items-center gap-1.5">
+            <i class="fa-solid fa-gamepad text-indigo-400"></i> 조작 방법
+        </div>
+        <div class="flex items-center space-x-2">
+            <span class="px-2 py-0.5 bg-slate-800 border border-slate-600 rounded text-[11px] font-mono text-slate-200">W A S D</span>
+            <span>또는</span>
+            <span class="px-2 py-0.5 bg-slate-800 border border-slate-600 rounded text-[11px] font-mono text-slate-200">↑ ← ↓ →</span>
+            <span>이동</span>
+        </div>
+        <div class="flex items-center space-x-2">
+            <span class="px-2 py-0.5 bg-slate-800 border border-slate-600 rounded text-[11px] font-mono text-slate-200">Shift</span>
+            <span>달리기</span>
+            <span class="px-2 py-0.5 bg-slate-800 border border-slate-600 rounded text-[11px] font-mono text-slate-200">Space</span>
+            <span>점프</span>
+        </div>
+        <div class="flex items-center space-x-2">
+            <span class="px-2 py-0.5 bg-slate-800 border border-slate-600 rounded text-[11px] font-mono text-slate-200">마우스 드래그</span>
+            <span>시점 회전</span>
+        </div>
+    </div>
+
+    <!-- Interactive Location Banner Popup -->
+    <div id="location-modal" class="hidden absolute bottom-10 left-1/2 -translate-x-1/2 z-20 w-11/12 max-w-md bg-slate-900/95 backdrop-blur-xl border border-indigo-500/60 p-5 rounded-3xl shadow-2xl transition-all duration-300 transform scale-95 opacity-0">
+        <div class="flex items-start justify-between">
+            <div class="flex items-center space-x-3">
+                <div id="location-icon" class="w-10 h-10 rounded-2xl bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-400 text-lg">
+                    <i class="fa-solid fa-location-dot"></i>
+                </div>
+                <div>
+                    <h2 id="location-title" class="text-lg font-bold text-white">건물 이름</h2>
+                    <span id="location-badge" class="inline-block px-2 py-0.5 text-[10px] bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30">주요 시설</span>
+                </div>
+            </div>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+        <p id="location-desc" class="mt-3 text-xs md:text-sm text-slate-300 leading-relaxed">
+            건물 관련 설명이 표시됩니다.
+        </p>
+    </div>
+
+    <!-- Mobile Virtual Joystick -->
+    <div id="joystick-zone" class="joystick-zone">
+        <div id="joystick-knob" class="joystick-knob"></div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        function initGame() {
+            if (typeof THREE === 'undefined') {
+                console.error("Three.js not loaded. Retrying...");
+                setTimeout(initGame, 100);
+                return;
+            }
+
+            const container = document.getElementById('canvas-container');
+            
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f172a); // Slate background
+            scene.fog = new THREE.FogExp2(0x0f172a, 0.002);
+
+            const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Strong, clear illumination setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
+            scene.add(ambientLight);
+
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x334155, 0.6);
+            hemiLight.position.set(0, 200, 0);
+            scene.add(hemiLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(120, 200, 100);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 500;
+            const d = 150;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            const colliders = [];
+            const interactiveZones = [];
+
+            const keys = { forward: false, backward: false, left: false, right: false, shift: false, jump: false };
+            let isGrounded = true;
+            let velocityY = 0;
+            const gravity = -30;
+
+            // Player Avatar (Bright Yellow / Neon Character)
+            const playerGroup = new THREE.Group();
+            scene.add(playerGroup);
+            playerGroup.position.set(0, 0, 45);
+
+            const playerMesh = new THREE.Mesh(
+                new THREE.CapsuleGeometry(0.7, 1.4, 8, 16),
+                new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2, metalness: 0.1 })
+            );
+            playerMesh.position.y = 1.4;
+            playerMesh.castShadow = true;
+            playerGroup.add(playerMesh);
+
+            // Eyes / Visor
+            const visorMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.8, 0.3, 0.4),
+                new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, emissive: 0x0284c7, emissiveIntensity: 0.5 })
+            );
+            visorMesh.position.set(0, 1.8, 0.45);
+            playerGroup.add(visorMesh);
+
+            let cameraAngleX = 0;
+            let cameraAngleY = 0.45;
+            let isMouseDown = false;
+            let previousMousePosition = { x: 0, y: 0 };
+
+            // Ground Plane (Main Campus Floor)
+            const ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(350, 350),
+                new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Grid Helper for Ground Texture Accent
+            const gridHelper = new THREE.GridHelper(350, 70, 0x334155, 0x1e293b);
+            gridHelper.position.y = 0.01;
+            scene.add(gridHelper);
+
+            // Surrounding Roads (화곡로 & 화곡로69길)
+            const roadMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 });
+            const roads = [
+                { w: 320, d: 22, x: 0, z: -140 }, // North Road
+                { w: 320, d: 22, x: 0, z: 140 },  // South Road (화곡로)
+                { w: 22, d: 300, x: -140, z: 0 }, // West Road (화곡로69길)
+                { w: 22, d: 300, x: 140, z: 0 }   // East Road
+            ];
+
+            roads.forEach(r => {
+                const road = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), roadMat);
+                road.rotation.x = -Math.PI / 2;
+                road.position.set(r.x, 0.03, r.z);
+                road.receiveShadow = true;
+                scene.add(road);
+            });
+
+            // Sports Pitches & Fields
+            // 1. Main Soccer Field (마포고 대운동장)
+            const pitchGroup = new THREE.Group();
+            const pitchGeo = new THREE.PlaneGeometry(65, 100);
+            const pitchMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.6 });
+            const pitch = new THREE.Mesh(pitchGeo, pitchMat);
+            pitch.rotation.x = -Math.PI / 2;
+            pitch.receiveShadow = true;
+            pitchGroup.add(pitch);
+
+            // Field Boundary Line
+            const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const lineGeo = new THREE.PlaneGeometry(63, 1.5);
+            const line1 = new THREE.Mesh(lineGeo, lineMat);
+            line1.rotation.x = -Math.PI / 2;
+            line1.position.y = 0.04;
+            pitchGroup.add(line1);
+
+            pitchGroup.position.set(-65, 0.05, 15);
+            scene.add(pitchGroup);
+
+            interactiveZones.push({
+                name: "마포고 대운동장",
+                desc: "정규 규격 인조잔디 축구장과 우레탄 트랙입니다.",
+                pos: new THREE.Vector3(-65, 0, 15),
+                radius: 45
+            });
+
+            // 2. Basketball / Tennis Courts (테니스장 & 족구장)
+            const courtMat = new THREE.MeshStandardMaterial({ color: 0x0d9488, roughness: 0.5 });
+            const court1 = new THREE.Mesh(new THREE.PlaneGeometry(35, 45), courtMat);
+            court1.rotation.x = -Math.PI / 2;
+            court1.position.set(-65, 0.05, -65);
+            court1.receiveShadow = true;
+            scene.add(court1);
+
+            // 3. AAFC Yuseok Futsal Court (AAFC 유석초구장)
+            const futsalMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 });
+            const futsalCourt = new THREE.Mesh(new THREE.PlaneGeometry(45, 30), futsalMat);
+            futsalCourt.rotation.x = -Math.PI / 2;
+            futsalCourt.position.set(25, 0.05, 75);
+            futsalCourt.receiveShadow = true;
+            scene.add(futsalCourt);
+
+            interactiveZones.push({
+                name: "AAFC 유석초구장",
+                desc: "유석초등학교 유소년 풋살장 및 전용 훈련 경기장입니다.",
+                pos: new THREE.Vector3(25, 0, 75),
+                radius: 25
+            });
+
+            // Building Construction Factory Function
+            function createBuilding(x, z, width, height, depth, color, name, desc) {
+                const group = new THREE.Group();
+                
+                // Main Building Body
+                const buildingGeo = new THREE.BoxGeometry(width, height, depth);
+                const buildingMat = new THREE.MeshStandardMaterial({ 
+                    color: color, 
+                    roughness: 0.3, 
+                    metalness: 0.1 
+                });
+                const building = new THREE.Mesh(buildingGeo, buildingMat);
+                building.position.y = height / 2;
+                building.castShadow = true;
+                building.receiveShadow = true;
+                group.add(building);
+
+                // Roof Slab
+                const roofGeo = new THREE.BoxGeometry(width + 1.2, 0.8, depth + 1.2);
+                const roofMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
+                const roof = new THREE.Mesh(roofGeo, roofMat);
+                roof.position.y = height + 0.4;
+                roof.castShadow = true;
+                group.add(roof);
+
+                // Decorative Strip Windows
+                const windowRows = Math.floor(height / 4);
+                if (windowRows > 0) {
+                    const winMat = new THREE.MeshStandardMaterial({ 
+                        color: 0x38bdf8, 
+                        emissive: 0x0284c7, 
+                        emissiveIntensity: 0.6,
+                        roughness: 0.1 
+                    });
+                    for (let i = 1; i <= windowRows; i++) {
+                        const winMesh = new THREE.Mesh(new THREE.BoxGeometry(width + 0.2, 1.4, depth * 0.85), winMat);
+                        winMesh.position.y = i * 3.6;
+                        group.add(winMesh);
+                    }
+                }
+
+                group.position.set(x, 0, z);
+                scene.add(group);
+
+                const box = new THREE.Box3().setFromObject(group);
+                colliders.push({ box: box, mesh: group });
+
+                if (name) {
+                    interactiveZones.push({
+                        name: name,
+                        desc: desc,
+                        pos: new THREE.Vector3(x, 0, z),
+                        radius: Math.max(width, depth) * 0.75 + 8
+                    });
+                }
+            }
+
+            // --- Campus Buildings Placement (According to Apple Map Layout) ---
+            // 1. Mapo High School / Middle School Main Building (ㅁ / ㄷ Shape Complex)
+            createBuilding(10, -30, 75, 20, 24, 0x3b82f6, "마포고등학교 · 마포중학교 본관", "마포고등학교 및 마포중학교의 메인 교사 건물입니다.");
+            createBuilding(40, -65, 22, 18, 70, 0x3b82f6, "마포고등학교 동관", "고학년 교실과 특성화실이 위치한 동쪽 교사입니다.");
+            createBuilding(-20, -65, 22, 18, 70, 0x3b82f6, "마포중학교 서관", "마포중학교 교실 및 각종 특별실이 위치해 있습니다.");
+            createBuilding(10, -100, 75, 16, 20, 0x2563eb, "은곡관", "본관 후면에 위치한 실내 학습 및 교육 시설입니다.");
+
+            // 2. Inui-gwan Gymnasium (인의관 체육관)
+            createBuilding(65, 30, 48, 22, 55, 0x475569, "인의관 (체육관)", "실내 스포츠 및 대규모 학내 행사가 열리는 종합 체육관입니다.");
+
+            // 3. Yuseok Elementary School Building (유석초등학교)
+            createBuilding(25, 25, 55, 16, 26, 0x0284c7, "유석초등학교 본관", "유석초등학교 메인 교사 건물입니다.");
+
+            // Event Listeners for Movement
+            window.addEventListener('keydown', (e) => handleKey(e.code, true));
+            window.addEventListener('keyup', (e) => handleKey(e.code, false));
+
+            function handleKey(code, state) {
+                switch (code) {
+                    case 'KeyW': case 'ArrowUp': keys.forward = state; break;
+                    case 'KeyS': case 'ArrowDown': keys.backward = state; break;
+                    case 'KeyA': case 'ArrowLeft': keys.left = state; break;
+                    case 'KeyD': case 'ArrowRight': keys.right = state; break;
+                    case 'ShiftLeft': case 'ShiftRight': keys.shift = state; break;
+                    case 'Space': 
+                        if (state && isGrounded) {
+                            velocityY = 11;
+                            isGrounded = false;
+                        }
+                        keys.jump = state; 
+                        break;
+                }
+            }
+
+            // Mouse Drag Camera Rotation
+            window.addEventListener('mousedown', (e) => {
+                if (e.button === 0) {
+                    isMouseDown = true;
+                    previousMousePosition = { x: e.clientX, y: e.clientY };
+                }
+            });
+            window.addEventListener('mouseup', () => isMouseDown = false);
+            window.addEventListener('mousemove', (e) => {
+                if (!isMouseDown) return;
+                const deltaX = e.clientX - previousMousePosition.x;
+                const deltaY = e.clientY - previousMousePosition.y;
+
+                cameraAngleX -= deltaX * 0.005;
+                cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2.3, cameraAngleY + deltaY * 0.005));
+
+                previousMousePosition = { x: e.clientX, y: e.clientY };
+            });
+
+            function checkCollisions(newPos) {
+                const playerRadius = 0.7;
+                const playerBox = new THREE.Box3(
+                    new THREE.Vector3(newPos.x - playerRadius, newPos.y, newPos.z - playerRadius),
+                    new THREE.Vector3(newPos.x + playerRadius, newPos.y + 2.5, newPos.z + playerRadius)
+                );
+
+                for (let c of colliders) {
+                    if (c.box.intersectsBox(playerBox)) return true;
+                }
+                if (Math.abs(newPos.x) > 135 || Math.abs(newPos.z) > 135) return true;
+                return false;
+            }
+
+            let currentActivePOI = null;
+            function checkPOIZones(pos) {
+                let activePOI = null;
+                for (let zone of interactiveZones) {
+                    if (pos.distanceTo(zone.pos) < zone.radius) {
+                        activePOI = zone;
+                        break;
+                    }
+                }
+
+                if (activePOI && activePOI !== currentActivePOI) {
+                    currentActivePOI = activePOI;
+                    showModal(activePOI.name, activePOI.desc);
+                } else if (!activePOI && currentActivePOI) {
+                    currentActivePOI = null;
+                    closeModal();
+                }
+            }
+
+            const modalEl = document.getElementById('location-modal');
+            function showModal(title, desc) {
+                document.getElementById('location-title').textContent = title;
+                document.getElementById('location-desc').textContent = desc;
+                modalEl.classList.remove('hidden');
+                setTimeout(() => {
+                    modalEl.classList.remove('scale-95', 'opacity-0');
+                    modalEl.classList.add('scale-100', 'opacity-100');
+                }, 10);
+            }
+            function closeModal() {
+                modalEl.classList.remove('scale-100', 'opacity-100');
+                modalEl.classList.add('scale-95', 'opacity-0');
+                setTimeout(() => modalEl.classList.add('hidden'), 300);
+            }
+
+            // Minimap Rendering
+            const minimapCanvas = document.getElementById('minimap-canvas');
+            const ctx = minimapCanvas.getContext('2d');
+            function drawMinimap() {
+                ctx.clearRect(0, 0, 160, 160);
+                const scale = 0.5;
+                const cx = 80;
+                const cy = 80;
+
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, 160, 160);
+
+                ctx.fillStyle = '#3b82f6';
+                colliders.forEach(c => {
+                    const min = c.box.min;
+                    const max = c.box.max;
+                    ctx.fillRect(cx + min.x * scale, cy + min.z * scale, (max.x - min.x) * scale, (max.z - min.z) * scale);
+                });
+
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.arc(cx + playerGroup.position.x * scale, cy + playerGroup.position.z * scale, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Game Loop
+            const clock = new THREE.Clock();
+            function animate() {
+                requestAnimationFrame(animate);
+
+                const delta = Math.min(clock.getDelta(), 0.1);
+                const speed = keys.shift ? 22 : 12;
+                let moveX = 0, moveZ = 0;
+
+                if (keys.forward) moveZ -= 1;
+                if (keys.backward) moveZ += 1;
+                if (keys.left) moveX -= 1;
+                if (keys.right) moveX += 1;
+
+                if (moveX !== 0 || moveZ !== 0) {
+                    const len = Math.hypot(moveX, moveZ);
+                    moveX /= len;
+                    moveZ /= len;
+
+                    const dirX = moveX * Math.cos(cameraAngleX) + moveZ * Math.sin(cameraAngleX);
+                    const dirZ = -moveX * Math.sin(cameraAngleX) + moveZ * Math.cos(cameraAngleX);
+
+                    const nextPos = playerGroup.position.clone();
+                    nextPos.x += dirX * speed * delta;
+                    nextPos.z += dirZ * speed * delta;
+
+                    if (!checkCollisions(nextPos)) {
+                        playerGroup.position.x = nextPos.x;
+                        playerGroup.position.z = nextPos.z;
+                    }
+
+                    playerGroup.rotation.y = THREE.MathUtils.lerp(playerGroup.rotation.y, Math.atan2(dirX, dirZ), 0.18);
+                }
+
+                velocityY += gravity * delta;
+                playerGroup.position.y += velocityY * delta;
+
+                if (playerGroup.position.y <= 0) {
+                    playerGroup.position.y = 0;
+                    velocityY = 0;
+                    isGrounded = true;
+                }
+
+                const cameraDistance = 26;
+                camera.position.set(
+                    playerGroup.position.x + cameraDistance * Math.sin(cameraAngleX) * Math.cos(cameraAngleY),
+                    playerGroup.position.y + cameraDistance * Math.sin(cameraAngleY) + 4,
+                    playerGroup.position.z + cameraDistance * Math.cos(cameraAngleX) * Math.cos(cameraAngleY)
+                );
+                camera.lookAt(playerGroup.position.x, playerGroup.position.y + 1.5, playerGroup.position.z);
+
+                checkPOIZones(playerGroup.position);
+                drawMinimap();
+                renderer.render(scene, camera);
+            }
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            animate();
+        }
+
+        window.onload = initGame;
+    </script>
+</body>
+</html>
